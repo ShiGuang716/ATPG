@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "ATPG_FAN_MPI8.C": "cpp",
+        "cstring": "c",
+        "vector": "cpp"
+    }
+}
