@@ -2,6 +2,7 @@
     "files.associations": {
         "ATPG_FAN_MPI8.C": "cpp",
         "cstring": "c",
-        "vector": "cpp"
+        "vector": "cpp",
+        "ATPG_FAN7.C": "cpp"
     }
 }
