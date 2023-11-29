@@ -280,6 +280,15 @@ void fault_sim(graph<vertex> &GA)
     // good sim
     Log("Good Sim Start!\n");
 	goodsim_timer.next();
+	/**
+	 * TODO()输入门一定在前几个吗？门id是拓扑排序好的吗？
+	 * 
+	 * 根据PI门的输入值模拟出其他门的正常值
+	 * 输入：
+	 * output[]
+	 * 输出
+	 * output[]
+	*/
     GoodSim(GA,max_level);
 	goodsim_time += goodsim_timer.next();
 
@@ -292,6 +301,18 @@ void fault_sim(graph<vertex> &GA)
 		if (fault_list[gate_index[i]] != 0) {
 			// 先处理SA0 fault
 			for (unsigned int j=0; j<8; j++) {
+				/**
+				 * TODO()
+				 * active_gates与visited_gates需要每次重新初始化吗？
+				 * 每次进行的是32个向量的故障模拟还是1个向量的故障模拟？
+				 * 
+				 * 对一个门的一个故障：
+				 * 1、	若为输入导致的故障，将输入门的值置0
+				 * 		若为输出导致的故障，将门的值置0
+				 * 2、	若为输入导致的故障，将门id压入active_gates与visited_gates
+				 * 		若为输出导致的故障，对门的每个出邻居，如果其不在visited_gates中，则压入active_gates与visited_gates
+				 * 3、	模拟故障的传播：如果传播到PO门，则故障可检测。如果传播到其他门，则继续传播。
+				*/
 				if ((fault_list[gate_index[i]] & add_SA_Fault[0][j]) != 0) {
 					memcpy(output1, output, sizeof(unsigned int) * n);
 					long faulty_gate;
@@ -361,6 +382,11 @@ void fault_sim(graph<vertex> &GA)
 						{
 							output1[curr_gate_id] = ~output1[curr_gate_id];
 						}
+						/**
+						 * TODO()
+						 * 这一步是复原吗？为什么有出度>1的判断？
+						 * 有必要复原output1吗？
+						*/
 						if ( (j < 7) && (curr_gate_id == gate_index[i]) && (GA.V[faulty_gate].getOutDegree() > 1) ){
 							output1[faulty_gate] = output[faulty_gate];
 						}
@@ -528,6 +554,19 @@ void Compute(graph<vertex> &GA, commandLine P)
         setbit(finish_flag, i);
     }
     finish_flag_global = finish_flag;
+
+	/**
+	 * 读取输入文件，按行读取
+	 * 每行表示一个gate，包含 gate_id、gate_type数据
+	 * 
+	 * 输入：
+	 * 文件名 typeFilename
+	 * 输出：
+	 * type[i]		gate_id==i的gate的type
+	 * index_PI		gate_type==PI的gate的id
+	 * noPI			gate_type==PI的gate的数量
+	*/
+
     type = new gtype[n];
 	FILE *f = fopen("log.txt", "w");
 	MUXINFO *muxinfo;
@@ -577,46 +616,20 @@ void Compute(graph<vertex> &GA, commandLine P)
         }
         printf("type file loaded!\n");
     }
-    // // 读取mux info文件
-	// std::ifstream mux_in(muxinfoFilename);
-	// long mux_count = 0;   
-	// if (mux_in.is_open())
-	// {
-	// 	std::getline(mux_in, line);
-	// 	mux_gate_num = (long)std::stol(line);
-	// 	muxinfo = new MUXINFO[mux_gate_num];
 
-	// 	while (std::getline(mux_in, line))
-	// 	{
-	// 		split(line, " ", container);
-	// 		muxinfo[mux_count].mux_dst_gate = (long)std::stol(container[0]);
-	// 		muxinfo[mux_count].mux_s0_gate = (long)std::stol(container[1]);
-	// 		muxinfo[mux_count].mux_a_gate = (long)std::stol(container[2]);
-	// 		muxinfo[mux_count].mux_b_gate = (long)std::stol(container[3]);
-         
-	// 		if (mux_count > 0 && muxinfo[mux_count].mux_dst_gate < muxinfo[mux_count - 1].mux_dst_gate)
-	// 		{
-	// 			printf("muxinfo should be sorted!");
-	// 			exit(-1);
-	// 		}
-	// 		mux_count++;
-	// 	}
-	// 	if (mux_count != mux_gate_num)
-	// 	{
-	// 		printf("muxinfo file error!\n");
-	// 		exit(-1);
-	// 	}
-	// }
-	// mux_in.close();
-	// if (mux_count != mux_gate_num)
-	// {
-	// 	printf("mux gate num error!\n");
-	// 	exit(-1);
-	// }
-	// printf("muxinfo file loaded!\n");
-
-    // levelize
-	//unsigned int *level = new unsigned int[n];
+	/**
+	 * 层级化，给每个gate赋予一个level,使用层次遍历
+	 * 
+	 * 输入：
+	 * GA			图数据
+	 * type[i]		gate_id==i的gate的type
+	 * noPI			gate_type==PI的gate数量
+	 * noTIE_0		gate_type==TIE_0的gate数量
+	 * 
+	 * 输出：
+	 * level[i]		gate_id==i的gate的level
+	 * maxlevel		图中level最高的gate的level
+	*/
 	level = new unsigned int[n];
 
 	bool *frontier = newA(bool, n);
@@ -663,7 +676,20 @@ void Compute(graph<vertex> &GA, commandLine P)
 	    printf("levelize finished!\n");
     }
 
-    // 生成故障列表
+	/**
+	 * 生成故障列表
+	 * 
+	 * 输入：
+	 * GA				图数据
+	 * add_SA_Fault		故障注入信息
+	 * 
+	 * 输出：
+	 * fault_list[i]	gate_id==i的gate的故障信息
+	 * 					0000 0001 0000 0010 
+	 * 					低八位表示SA0故障，高八位表示SA1故障，
+	 * 					7位和15位表示输出故障，其他表示输入故障
+	 * num_of_faults	生成的故障总数
+	*/
 	fault_list = new unsigned short[n];
     // local_output = new unsigned int[n];
     output = new int[n];
@@ -836,6 +862,22 @@ void Compute(graph<vertex> &GA, commandLine P)
                 Log("fan start");
 
 				fan_timer.next();
+				/**
+				 * fan1函数
+				 * 输入：
+				 * GA				图数据
+				 * iNoGate			图中顶点数量
+				 * iMaxLevelAdd2	图中顶点的最高层级+2
+				 * inoPI			PI门数量
+				 * iNoPO			PO门数量
+				 * pCurrentFault	故障（门id，故障序号，故障类型）
+				 * iMaxBackTrack	最高回溯次数
+				 * piNoBackTrack	指向整数的指针，用于记录回溯次数
+				 * 
+				 * 输出：
+				 * rt				函数运行结果
+				 * FANoutput[]		门输出（向量）
+				*/
                 rt = fan1(GA, n, max_level+2,  noPI, noPO, pCurrentFault, g_iMaxBackTrack1, &iNoBackTrack);
 				fan_time += fan_timer.next();
 				
@@ -852,7 +894,7 @@ void Compute(graph<vertex> &GA, commandLine P)
 					fault_list[gate_index[i]] = fault_list[gate_index[i]] & del_SA_Fault[0][j];
 					generated_patterns++;
 					int bit = (generated_patterns % local_bitsize);
-					//rand((unsigned)time(NULL));
+					
 					parallel_for(long k=0; k<n; k++) {
 						if (type[k] == PI) {
 							int temp = rand() % 2;
@@ -898,12 +940,7 @@ void Compute(graph<vertex> &GA, commandLine P)
 					}
 					sychronize_time += sychronize_timer.next();
 					Log("FAN success!%d", generated_patterns);
-				}
-				// else if(rt == NO_TEST){·
-				// 	noRedundant_faults++;
-				// 	fault_list[gate_index[i]] = fault_list[gate_index[i]] & del_SA_Fault[0][j];
-				// 	Log("Fan end, no pattern generated!");					
-				// }				
+				}			
 		 	} 
 			// 再处理SA1 
 			for (unsigned int j = 0; j < 8; j++)
@@ -982,6 +1019,7 @@ void Compute(graph<vertex> &GA, commandLine P)
 		}
 	}
 	sychronize_timer.next();
+
    if (generated_patterns % local_bitsize != 0) {
         // parallel_for(long k=0; k<n; k++) {
         //     output1[k] = local_output[k] << (local_bitsize * process_id);
